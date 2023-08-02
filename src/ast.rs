@@ -18,14 +18,6 @@ impl Node {
         }
     }
 
-    pub fn children_mut(&mut self) -> &mut Vec<Node> {
-        match self {
-            Node::Root(x) => &mut x.children,
-            Node::Section(x) => &mut x.children,
-            _ => panic!("node does not have children"),
-        }
-    }
-
     pub fn push(&mut self, child: Node) {
         match self {
             Node::Root(x) => x.children.push(child),
@@ -45,7 +37,7 @@ impl Index<usize> for Node {
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Root {
-    children: Vec<Node>,
+    pub children: Vec<Node>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,9 +48,9 @@ pub enum Variant {
 
 #[derive(Debug, PartialEq)]
 pub struct Section {
-    name: String,
-    variant: Variant,
-    children: Vec<Node>,
+    pub name: String,
+    pub variant: Variant,
+    pub children: Vec<Node>,
 }
 
 impl Section {
@@ -73,8 +65,8 @@ impl Section {
 
 #[derive(Debug, PartialEq)]
 pub struct Variable {
-    name: String,
-    escaped: bool,
+    pub name: String,
+    pub escaped: bool,
 }
 
 impl Variable {
