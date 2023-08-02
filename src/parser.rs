@@ -1,3 +1,5 @@
+use crate::error::{Error, Result};
+
 #[derive(Debug, PartialEq)]
 enum Token {
     Text(usize, usize),
@@ -24,218 +26,136 @@ impl<'a> Parser<'a> {
         let parser = Parser::new(text);
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Result<Option<Token>> {
         if self.pos == self.text.len() {
-            return None;
+            return Ok(None);
         }
 
-        if let Some((token, len)) = self.scan_section_start() {
+        if let Some((token, len)) = self.scan_tag()? {
             self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_invert_section_start() {
-            self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_section_end() {
-            self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_comment() {
-            self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_partial() {
-            self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_set_delim() {
-            self.pos += len;
-            return Some(token);
-        }
-
-        if let Some((token, len)) = self.scan_variable() {
-            self.pos += len;
-            return Some(token);
+            return Ok(Some(token));
         }
 
         let (token, len) = self.scan_text();
         self.pos += len;
-        Some(token)
+        Ok(Some(token))
     }
 
     fn remainder(&self) -> &str {
         &self.text[self.pos..]
     }
 
-    fn scan_section_start(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{#") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::SectionStart(len), len + 5))
-    }
-
-    fn scan_invert_section_start(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{^") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::InvertSectionStart(len), len + 5))
-    }
-
-    fn scan_section_end(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{/") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::SectionEnd(len), len + 5))
-    }
-
-    fn scan_comment(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{!") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::Comment(len), len + 5))
-    }
-
-    fn scan_partial(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{>") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::Partial(len), len + 5))
-    }
-
-    fn scan_set_delim(&self) -> Option<(Token, usize)> {
-        let Some(remainder) = self.remainder().strip_prefix("{{=") else {
-            return None;
-        };
-        let Some(len) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
-        };
-        // @todo: check that variable has proper name
-        Some((Token::SetDelim(len), len + 5))
-    }
-
-    fn scan_variable(&self) -> Option<(Token, usize)> {
+    fn scan_tag(&self) -> Result<Option<(Token, usize)>> {
         let Some(remainder) = self.remainder().strip_prefix("{{") else {
-            return None;
+            return Ok(None);
         };
-        let Some(close_delim_pos) = remainder.find("}}") else {
-            // @todo: should be an error
-            return None;
+        let Some(len) = remainder.find("}}") else {
+            return Err(Error::Parse);
         };
-        // @todo: check that variable has proper name
-        Some((Token::Variable(close_delim_pos), close_delim_pos + 4))
+        match remainder.chars().next() {
+            Some('#') => Ok(Some((Token::SectionStart(len - 1), len + 5))),
+            Some('^') => Ok(Some((Token::InvertSectionStart(len - 1), len + 5))),
+            Some('/') => Ok(Some((Token::SectionEnd(len - 1), len + 5))),
+            Some('!') => Ok(Some((Token::Comment(len - 1), len + 5))),
+            Some('>') => Ok(Some((Token::Partial(len - 1), len + 5))),
+            Some('=') => Ok(Some((Token::SetDelim(len - 1), len + 5))),
+            _ => Ok(Some((Token::Variable(len), len + 4))),
+        }
     }
 
     fn scan_text(&self) -> (Token, usize) {
-        let mut len = 0;
-        let mut chars = self.remainder().chars();
-        while let Some(ch) = chars.next() {
-            // @todo: should stop at double mustache only
-            if let '{' = ch {
-                break;
-            }
-            len += ch.len_utf8();
-        }
+        let len = match self.remainder().find("{{") {
+            Some(len) => len,
+            None => self.remainder().len(),
+        };
         (Token::Text(self.pos, len), len)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::error::Result;
+
     use super::{Parser, Token::*};
 
     #[test]
-    fn text() {
+    fn text() -> Result<()> {
         let text = "foo";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(Text(0, 3)));
+        Ok(())
     }
 
     #[test]
-    fn variable() {
+    fn unclosed_tag() -> Result<()> {
+        let text = "{{foo";
+        let mut parser = Parser::new(text);
+        let token = parser.next_token();
+        assert!(token.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn variable() -> Result<()> {
         let text = "{{foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(Variable(3)));
+        Ok(())
     }
 
     #[test]
-    fn section_start() {
+    fn section_start() -> Result<()> {
         let text = "{{#foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(SectionStart(3)));
+        Ok(())
     }
 
     #[test]
-    fn invert_section_start() {
+    fn invert_section_start() -> Result<()> {
         let text = "{{^foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(InvertSectionStart(3)));
+        Ok(())
     }
 
     #[test]
-    fn section_end() {
+    fn section_end() -> Result<()> {
         let text = "{{/foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(SectionEnd(3)));
+        Ok(())
     }
 
     #[test]
-    fn comment() {
+    fn comment() -> Result<()> {
         let text = "{{!foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(Comment(3)));
+        Ok(())
     }
 
     #[test]
-    fn partial() {
+    fn partial() -> Result<()> {
         let text = "{{>foo}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(Partial(3)));
+        Ok(())
     }
 
     #[test]
-    fn set_delim() {
+    fn set_delim() -> Result<()> {
         let text = "{{=// //}}";
         let mut parser = Parser::new(text);
-        let token = parser.next_token();
+        let token = parser.next_token()?;
         assert_eq!(token, Some(SetDelim(5)));
+        Ok(())
     }
 }
