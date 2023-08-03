@@ -40,7 +40,7 @@ pub struct Root {
     pub children: Vec<Node>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Variant {
     Direct,
     Inverse,
