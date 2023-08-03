@@ -10,6 +10,7 @@ pub enum Token {
     SectionStart(String, Variant),
     SectionEnd(String),
     Partial(String),
+    SetDelim(String, String),
     Comment,
 }
 
@@ -47,7 +48,7 @@ impl<'a> Lexer<'a> {
             let is_special_tag = |token: &&Token| {
                 matches!(
                     token,
-                    SectionStart(..) | SectionEnd(_) | Partial(_) | Comment
+                    SectionStart(..) | SectionEnd(_) | Partial(_) | SetDelim(..) | Comment
                 )
             };
             let special_tag_count = line.iter().filter(is_special_tag).count();
@@ -80,10 +81,14 @@ impl<'a> Lexer<'a> {
             return Ok(None);
         }
 
-        while let Some((open, close, len)) = self.scan_set_delim()? {
+        while let Some((token, len)) = self.scan_set_delim()? {
             self.pos += len;
-            self.open_delim = open;
-            self.close_delim = close;
+            let Token::SetDelim(open, close) = &token else {
+                return Err(Error::Parse);
+            };
+            self.open_delim = open.clone();
+            self.close_delim = close.clone();
+            return Ok(Some(token));
         }
 
         if let Some((token, len)) = self.scan_triple_unescape()? {
@@ -115,7 +120,7 @@ impl<'a> Lexer<'a> {
         &self.text[self.pos..]
     }
 
-    fn scan_set_delim(&self) -> Result<Option<(String, String, usize)>> {
+    fn scan_set_delim(&self) -> Result<Option<(Token, usize)>> {
         let Some(remainder) = self.remainder().strip_prefix(&format!("{}=", &self.open_delim)) else {
         return Ok(None);
     };
@@ -127,8 +132,7 @@ impl<'a> Lexer<'a> {
         return Err(Error::Parse);
     };
         Ok(Some((
-            open_delim.into(),
-            close_delim.into(),
+            Token::SetDelim(open_delim.into(), close_delim.into()),
             3 + content_len + 3,
         )))
     }
@@ -323,6 +327,15 @@ mod tests {
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
         assert_eq!(token, Some(Partial("foo".into())));
+        Ok(())
+    }
+
+    #[test]
+    fn set_delim() -> Result<()> {
+        let text = "{{=// //=}}";
+        let mut lexer = Lexer::new(text);
+        let token = lexer.next()?;
+        assert_eq!(token, Some(SetDelim("//".into(), "//".into())));
         Ok(())
     }
 }

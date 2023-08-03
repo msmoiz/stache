@@ -31,6 +31,7 @@ impl<'a> Parser<'a> {
         while let Some(token) = token_it.next() {
             match token {
                 Token::Comment => continue,
+                Token::SetDelim(..) => continue,
                 Token::Text(content) => root.push(Node::Text(content.clone())),
                 Token::Whitespace(content) => root.push(Node::Text(content.clone())),
                 Token::Newline(content) => root.push(Node::Text(content.clone())),
@@ -57,6 +58,7 @@ impl<'a> Parser<'a> {
         while let Some(token) = token_it.next() {
             match token {
                 Token::Comment => continue,
+                Token::SetDelim(..) => continue,
                 Token::Text(content) => section.push(Node::Text(content.clone())),
                 Token::Whitespace(content) => section.push(Node::Text(content.clone())),
                 Token::Newline(content) => section.push(Node::Text(content.clone())),

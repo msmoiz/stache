@@ -152,6 +152,25 @@ fn strip_standalone_special_tags_3() -> Result<()> {
 }
 
 #[test]
+fn strip_standalone_special_tags_4() -> Result<()> {
+    let text = indoc! {"
+        {{=! !=}}
+        Hello world
+    "};
+
+    let template = Template::compile(text)?;
+    let context = Context::Map(HashMap::new());
+    let rendered = template.render(context);
+
+    let expected = indoc! {"
+        Hello world
+    "};
+
+    assert_eq!(rendered, expected);
+    Ok(())
+}
+
+#[test]
 fn preserve_multiple_special_tags() -> Result<()> {
     let text = indoc! {"
         {{#condition}}   {{/condition}}
