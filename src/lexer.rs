@@ -1,7 +1,7 @@
 use crate::ast::Variant;
 use crate::error::{Error, Result};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Text(String),
     Newline(String),
@@ -35,7 +35,44 @@ impl<'a> Lexer<'a> {
         while let Some(token) = self.next()? {
             tokens.push(token);
         }
+        let tokens = Self::strip_superfluous_whitespace(&tokens);
         Ok(tokens)
+    }
+
+    fn strip_superfluous_whitespace(mut tokens: &[Token]) -> Vec<Token> {
+        let mut out = Vec::new();
+        while let Some(line) = Self::read_line(&tokens) {
+            tokens = &tokens[line.len()..];
+            use Token::*;
+            let is_special_tag = |token: &&Token| {
+                matches!(
+                    token,
+                    SectionStart(..) | SectionEnd(_) | Partial(_) | Comment
+                )
+            };
+            let special_tag_count = line.iter().filter(is_special_tag).count();
+            let contains_text = line.iter().any(|token| matches!(token, Text(_)));
+            if special_tag_count == 1 && !contains_text {
+                let standalone_tag = line.iter().find(is_special_tag).unwrap();
+                out.push(standalone_tag.clone());
+            } else {
+                out.extend_from_slice(&line);
+            }
+        }
+        out
+    }
+
+    fn read_line(tokens: &[Token]) -> Option<&[Token]> {
+        match tokens
+            .iter()
+            .position(|token| matches!(token, Token::Newline(_)))
+        {
+            Some(pos) => Some(&tokens[..pos + 1]),
+            None => match tokens.is_empty() {
+                true => None,
+                false => Some(&tokens),
+            },
+        }
     }
 
     fn next(&mut self) -> Result<Option<Token>> {

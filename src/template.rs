@@ -74,7 +74,7 @@ impl Template {
                     for child in &x.children {
                         out.push_str(&Self::render_node(&child, &context));
                     }
-                    out.trim().into()
+                    out
                 }
                 _ => String::new(),
             },

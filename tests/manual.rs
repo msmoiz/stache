@@ -79,7 +79,6 @@ fn section_false() -> Result<()> {
 
     let expected = indoc! {"
         Shown.
-
     "};
 
     assert_eq!(rendered, expected);
@@ -102,7 +101,6 @@ fn section_empty_list() -> Result<()> {
 
     let expected = indoc! {"
         Shown.
-
     "};
 
     assert_eq!(rendered, expected);
