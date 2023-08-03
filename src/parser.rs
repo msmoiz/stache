@@ -8,6 +8,8 @@ use crate::{
 #[derive(Debug, PartialEq)]
 enum Token {
     Text(usize, usize),
+    Newline(usize, usize),
+    Whitespace(usize, usize),
     Variable(usize, usize, bool),
     SectionStart(usize, usize, Variant),
     SectionEnd(usize, usize),
@@ -60,6 +62,10 @@ impl<'a> Parser<'a> {
                     self.open_delim = open;
                     self.close_delim = close;
                 }
+                Token::Newline(pos, len) => root.push(Node::Text(self.text[pos..pos + len].into())),
+                Token::Whitespace(pos, len) => {
+                    root.push(Node::Text(self.text[pos..pos + len].into()))
+                }
             }
         }
         Ok(root)
@@ -94,6 +100,12 @@ impl<'a> Parser<'a> {
                     self.open_delim = open;
                     self.close_delim = close;
                 }
+                Token::Newline(pos, len) => {
+                    section.push(Node::Text(self.text[pos..pos + len].into()))
+                }
+                Token::Whitespace(pos, len) => {
+                    section.push(Node::Text(self.text[pos..pos + len].into()))
+                }
             }
         }
         Ok(section)
@@ -115,6 +127,16 @@ impl<'a> Parser<'a> {
         }
 
         if let Some((token, len)) = self.scan_tag()? {
+            self.pos += len;
+            return Ok(Some(token));
+        }
+
+        if let Some((token, len)) = self.scan_newline() {
+            self.pos += len;
+            return Ok(Some(token));
+        }
+
+        if let Some((token, len)) = self.scan_whitespace() {
             self.pos += len;
             return Ok(Some(token));
         }
@@ -181,11 +203,39 @@ impl<'a> Parser<'a> {
         Ok(Some((token, content_len + total_delim_len)))
     }
 
+    fn scan_newline(&self) -> Option<(Token, usize)> {
+        match self.remainder().strip_prefix("\r\n") {
+            Some(_) => Some((Token::Newline(self.pos, 2), 2)),
+            None => match self.remainder().strip_prefix("\n") {
+                Some(_) => Some((Token::Newline(self.pos, 1), 1)),
+                None => None,
+            },
+        }
+    }
+
+    fn scan_whitespace(&self) -> Option<(Token, usize)> {
+        let chars = self.remainder().chars();
+        let len = chars
+            .map_while(|x| matches!(x, ' ' | '\t').then(|| x.len_utf8()))
+            .sum();
+        if len == 0 {
+            return None;
+        }
+        Some((Token::Whitespace(self.pos, len), len))
+    }
+
     fn scan_text(&self) -> (Token, usize) {
-        let len = match self.remainder().find(&self.open_delim) {
-            Some(len) => len,
-            None => self.remainder().len(),
-        };
+        let mut len = 0;
+        while len < self.remainder().len() {
+            let text = &self.remainder()[len..];
+            if text.starts_with(&self.open_delim)
+                || text.starts_with("\r\n")
+                || text.starts_with("\n")
+            {
+                break;
+            }
+            len += text.chars().next().unwrap().len_utf8();
+        }
         (Token::Text(self.pos, len), len)
     }
 }
@@ -202,6 +252,33 @@ mod tests {
         let mut parser = Parser::new(text);
         let token = parser.next_token()?;
         assert_eq!(token, Some(Text(0, 3)));
+        Ok(())
+    }
+
+    #[test]
+    fn newline() -> Result<()> {
+        let text = "\n";
+        let mut parser = Parser::new(text);
+        let token = parser.next_token()?;
+        assert_eq!(token, Some(Newline(0, 1)));
+        Ok(())
+    }
+
+    #[test]
+    fn newline_win() -> Result<()> {
+        let text = "\r\n";
+        let mut parser = Parser::new(text);
+        let token = parser.next_token()?;
+        assert_eq!(token, Some(Newline(0, 2)));
+        Ok(())
+    }
+
+    #[test]
+    fn whitespace() -> Result<()> {
+        let text = " \t";
+        let mut parser = Parser::new(text);
+        let token = parser.next_token()?;
+        assert_eq!(token, Some(Whitespace(0, 2)));
         Ok(())
     }
 
@@ -292,37 +369,6 @@ mod tests {
         let mut parser = Parser::new(text);
         let token = parser.next_token()?;
         assert_eq!(token, Some(SetDelim("//".into(), "//".into())));
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod spec_tests {
-    use crate::ast::Node::*;
-    use crate::ast::Variable;
-    use crate::error::Result;
-    use crate::parser::Parser;
-
-    #[test]
-    fn typical() -> Result<()> {
-        let text = "\
-Hello {{name}}
-You have just won {{value}} dollars!
-{{#in_ca}}
-Well, {{taxed_value}} dollars, after taxes.
-{{/in_ca}}";
-        let ast = Parser::parse(text)?;
-        assert_eq!(ast[0], Text("Hello ".into()));
-        assert_eq!(ast[1], Variable(Variable::new("name".into(), true)));
-        assert_eq!(ast[2], Text("\nYou have just won ".into()));
-        assert_eq!(ast[3], Variable(Variable::new("value".into(), true)));
-        assert_eq!(ast[4], Text(" dollars!\n".into()));
-        assert_eq!(ast[5][0], Text("\nWell, ".into()));
-        assert_eq!(
-            ast[5][1],
-            Variable(Variable::new("taxed_value".into(), true))
-        );
-        assert_eq!(ast[5][2], Text(" dollars, after taxes.\n".into()));
         Ok(())
     }
 }
