@@ -6,7 +6,7 @@ out, but the rendering is lacking central features at the moment including
 support for iteration, functions, and nested context. There are a number of
 other odds and ends (like whitespace management around standalone tags) that
 went beyond the scope of this exercise. For a more full-featured library, check
-out [nickel-org/rust-mustache](https://github.com/nickel-org/rust-mustache).
+out [Ramhorns](https://github.com/maciejhirsz/ramhorns).
 
 ```rust
 use std::collections::HashMap;
