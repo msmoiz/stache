@@ -9,8 +9,7 @@ use crate::{
 enum Token {
     Text(usize, usize),
     Variable(usize, usize, bool),
-    SectionStart(usize, usize),
-    InvertSectionStart(usize, usize),
+    SectionStart(usize, usize, Variant),
     SectionEnd(usize, usize),
     Partial(usize, usize),
     SetDelim(String, String),
@@ -52,13 +51,9 @@ impl<'a> Parser<'a> {
                 Token::Partial(pos, len) => {
                     root.push(Node::Partial(self.text[pos..pos + len].into()))
                 }
-                Token::SectionStart(pos, len) => {
+                Token::SectionStart(pos, len, variant) => {
                     let name = &self.text[pos..pos + len];
-                    root.push(self.section(name, Variant::Direct)?);
-                }
-                Token::InvertSectionStart(pos, len) => {
-                    let name = &self.text[pos..pos + len];
-                    root.push(self.section(name, Variant::Inverse)?);
+                    root.push(self.section(name, variant)?);
                 }
                 Token::SectionEnd(..) => return Err(Error::Parse),
                 Token::SetDelim(open, close) => {
@@ -83,13 +78,9 @@ impl<'a> Parser<'a> {
                 Token::Partial(pos, len) => {
                     section.push(Node::Partial(self.text[pos..pos + len].into()))
                 }
-                Token::SectionStart(pos, len) => {
+                Token::SectionStart(pos, len, variant) => {
                     let name = &self.text[pos..pos + len];
-                    section.push(self.section(name, Variant::Direct)?);
-                }
-                Token::InvertSectionStart(pos, len) => {
-                    let name = &self.text[pos..pos + len];
-                    section.push(self.section(name, Variant::Inverse)?);
+                    section.push(self.section(name, variant)?);
                 }
                 Token::SectionEnd(pos, len) => {
                     let end_name = &self.text[pos..pos + len];
@@ -178,8 +169,8 @@ impl<'a> Parser<'a> {
         let special_tag_offset = self.pos + self.open_delim.len() + 1;
         let simple_tag_offset = self.pos + self.open_delim.len();
         let token = match remainder.chars().next() {
-            Some('#') => Token::SectionStart(special_tag_offset, content_len - 1),
-            Some('^') => Token::InvertSectionStart(special_tag_offset, content_len - 1),
+            Some('#') => Token::SectionStart(special_tag_offset, content_len - 1, Variant::Direct),
+            Some('^') => Token::SectionStart(special_tag_offset, content_len - 1, Variant::Inverse),
             Some('/') => Token::SectionEnd(special_tag_offset, content_len - 1),
             Some('>') => Token::Partial(special_tag_offset, content_len - 1),
             Some('&') => Token::Variable(special_tag_offset, content_len - 1, false),
@@ -201,7 +192,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Result;
+    use crate::{ast::Variant, error::Result};
 
     use super::{Parser, Token::*};
 
@@ -255,7 +246,7 @@ mod tests {
         let text = "{{#foo}}";
         let mut parser = Parser::new(text);
         let token = parser.next_token()?;
-        assert_eq!(token, Some(SectionStart(3, 3)));
+        assert_eq!(token, Some(SectionStart(3, 3, Variant::Direct)));
         Ok(())
     }
 
@@ -264,7 +255,7 @@ mod tests {
         let text = "{{^foo}}";
         let mut parser = Parser::new(text);
         let token = parser.next_token()?;
-        assert_eq!(token, Some(InvertSectionStart(3, 3)));
+        assert_eq!(token, Some(SectionStart(3, 3, Variant::Inverse)));
         Ok(())
     }
 
