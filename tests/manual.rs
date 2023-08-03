@@ -1,7 +1,7 @@
 use indoc::indoc;
 use std::collections::HashMap;
 
-use moonchi::{Context, Result, Template};
+use stache::{Context, Result, Template};
 
 #[test]
 fn intro() -> Result<()> {
