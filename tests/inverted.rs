@@ -150,7 +150,56 @@ mstest!(
     "
 );
 
-// @todo: dotted names
+mstest!(
+    dotted_names_truthy,
+    Context::Map(HashMap::from([(
+        String::from("a"),
+        Context::Map(HashMap::from([(
+            String::from("b"),
+            Context::Map(HashMap::from([(String::from("c"), Context::Bool(true))]))
+        )]))
+    )])),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"{{^a.b.c}}Not Here{{/a.b.c}}\" == \"\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"\" == \"\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
+
+mstest!(
+    dotted_names_falsey,
+    Context::Map(HashMap::from([(
+        String::from("a"),
+        Context::Map(HashMap::from([(
+            String::from("b"),
+            Context::Map(HashMap::from([(String::from("c"), Context::Bool(false))]))
+        )]))
+    )])),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"{{^a.b.c}}Not Here{{/a.b.c}}\" == \"Not Here\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"Not Here\" == \"Not Here\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
+
+mstest!(
+    dotted_names_broken_chains,
+    Context::Map(HashMap::from([(
+        String::from("a"),
+        Context::Map(HashMap::from([]))
+    )])),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"{{^a.b.c}}Not Here{{/a.b.c}}\" == \"Not Here\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    \"Not Here\" == \"Not Here\"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
 
 mstest!(
     surrounding_whitespace,
