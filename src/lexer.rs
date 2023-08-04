@@ -145,7 +145,7 @@ impl<'a> Lexer<'a> {
         return Err(Error::Parse);
     };
         Ok(Some((
-            Token::Variable(remainder[..content_len].into(), false),
+            Token::Variable(remainder[..content_len].trim().into(), false),
             content_len + self.open_delim.len() + self.close_delim.len() + 2,
         )))
     }
@@ -162,9 +162,9 @@ impl<'a> Lexer<'a> {
             Some('^') => Token::SectionStart(remainder[1..content_len].into(), Variant::Inverse),
             Some('/') => Token::SectionEnd(remainder[1..content_len].into()),
             Some('>') => Token::Partial(remainder[1..content_len].into()),
-            Some('&') => Token::Variable(remainder[1..content_len].into(), false),
+            Some('&') => Token::Variable(remainder[1..content_len].trim().into(), false),
             Some('!') => Token::Comment,
-            _ => Token::Variable(remainder[..content_len].into(), true),
+            _ => Token::Variable(remainder[..content_len].trim().into(), true),
         };
         let total_delim_len = self.open_delim.len() + self.close_delim.len();
         Ok(Some((token, content_len + total_delim_len)))

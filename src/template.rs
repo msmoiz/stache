@@ -10,6 +10,7 @@ pub enum Context {
     Integer(i64),
     Float(f64),
     Bool(bool),
+    Null,
     Map(HashMap<String, Context>),
     List(Vec<Context>),
 }
@@ -21,6 +22,7 @@ impl Context {
             Context::Integer(x) => x.to_string(),
             Context::Float(x) => x.to_string(),
             Context::Bool(x) => x.to_string(),
+            Context::Null => "".to_string(),
             _ => panic!("not a scalar"),
         }
     }
@@ -92,6 +94,16 @@ impl Template {
     }
 
     fn escape(input: &str) -> String {
-        input.replace("<", "&lt;").replace(">", "&gt;")
+        const ESCAPES: [(&str, &str); 4] = [
+            ("&", "&amp;"),
+            (">", "&gt;"),
+            ("<", "&lt;"),
+            ("\"", "&quot;"),
+        ];
+        let mut out = String::from(input);
+        for (from, to) in ESCAPES {
+            out = out.replace(from, to);
+        }
+        out
     }
 }
