@@ -3,7 +3,7 @@
 use std::slice::Iter;
 
 use crate::{
-    ast::{Node, Root, Section, Variable, Variant},
+    ast::{Node, Partial, Root, Section, Variable, Variant},
     error::{Error, Result},
     lexer::{Lexer, Token},
 };
@@ -38,7 +38,9 @@ impl<'a> Parser<'a> {
                 Token::Variable(name, esc) => {
                     root.push(Node::Variable(Variable::new(name.clone(), *esc)))
                 }
-                Token::Partial(name) => root.push(Node::Partial(name.clone())),
+                Token::Partial(name, indent) => {
+                    root.push(Node::Partial(Partial::new(name.clone(), indent.clone())))
+                }
                 Token::SectionStart(name, variant) => {
                     root.push(self.section(&name, &variant, &mut token_it)?)
                 }
@@ -65,7 +67,9 @@ impl<'a> Parser<'a> {
                 Token::Variable(name, esc) => {
                     section.push(Node::Variable(Variable::new(name.clone(), *esc)))
                 }
-                Token::Partial(name) => section.push(Node::Partial(name.clone())),
+                Token::Partial(name, indent) => {
+                    section.push(Node::Partial(Partial::new(name.clone(), indent.clone())))
+                }
                 Token::SectionStart(name, variant) => {
                     section.push(self.section(&name, &variant, token_it)?)
                 }

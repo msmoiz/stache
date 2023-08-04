@@ -5,7 +5,7 @@ pub enum Node {
     Root(Root),
     Section(Section),
     Variable(Variable),
-    Partial(String),
+    Partial(Partial),
     Text(String),
 }
 
@@ -72,5 +72,17 @@ pub struct Variable {
 impl Variable {
     pub fn new(name: String, escaped: bool) -> Self {
         Self { name, escaped }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Partial {
+    pub name: String,
+    pub indent: String,
+}
+
+impl Partial {
+    pub fn new(name: String, indent: String) -> Self {
+        Self { name, indent }
     }
 }

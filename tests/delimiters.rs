@@ -61,8 +61,40 @@ mstest!(
     "
 );
 
-// @todo: Partial Inheritance
-// @todo: Post-Partial Behavior
+mstest_with_partials!(
+    partial_inheritance,
+    Context::Map(HashMap::from([(
+        String::from("value"),
+        Context::String("yes".into())
+    )])),
+    HashMap::from([(String::from("include"), String::from(".{{value}}."))]),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [ {{>include}} ]\n{{= | | =}}\n[ |>include| ]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [ .yes. ]\n[ .yes. ]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
+
+mstest_with_partials!(
+    post_partial_behavior,
+    Context::Map(HashMap::from([(
+        String::from("value"),
+        Context::String("yes".into())
+    )])),
+    HashMap::from([(
+        String::from("include"),
+        String::from(".{{value}}. {{= | | =}} .|value|.")
+    )]),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [ {{>include}} ]\n[ .{{value}}.  .|value|. ]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [ .yes.  .yes. ]\n[ .yes.  .|value|. ]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
 
 mstest!(
     surrounding_whitespace,

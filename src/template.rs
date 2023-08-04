@@ -53,6 +53,8 @@ impl Index<&str> for Context {
     }
 }
 
+pub type Partials = HashMap<String, String>;
+
 #[derive(Clone)]
 pub struct ContextResolver<'a> {
     stack: Vec<&'a Context>,
@@ -99,15 +101,19 @@ impl Template {
     }
 
     pub fn render(&self, context: Context) -> String {
-        Self::render_node(&self.root, ContextResolver::new(&context))
+        Self::render_node(&self.root, ContextResolver::new(&context), &Partials::new())
     }
 
-    fn render_node(node: &Node, resolver: ContextResolver) -> String {
+    pub fn render_with_partials(&self, context: Context, partials: Partials) -> String {
+        Self::render_node(&self.root, ContextResolver::new(&context), &partials)
+    }
+
+    fn render_node(node: &Node, resolver: ContextResolver, partials: &Partials) -> String {
         match node {
             Node::Root(x) => {
                 let mut out = String::new();
                 for child in &x.children {
-                    out.push_str(&Self::render_node(&child, resolver.clone()));
+                    out.push_str(&Self::render_node(&child, resolver.clone(), partials));
                 }
                 out
             }
@@ -117,28 +123,28 @@ impl Template {
                     Some(c @ Context::Integer(_)) => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c)));
+                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
                         }
                         out
                     }
                     Some(c @ Context::String(_)) => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c)));
+                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
                         }
                         out
                     }
                     Some(c @ Context::Bool(b)) if *b == true => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c)));
+                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
                         }
                         out
                     }
                     Some(c @ Context::Map(_)) => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c)));
+                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
                         }
                         out
                     }
@@ -146,7 +152,11 @@ impl Template {
                         let mut out = String::new();
                         for c in list {
                             for child in &x.children {
-                                out.push_str(&Self::render_node(&child, resolver.push(c)));
+                                out.push_str(&Self::render_node(
+                                    &child,
+                                    resolver.push(c),
+                                    partials,
+                                ));
                             }
                         }
                         out
@@ -157,28 +167,28 @@ impl Template {
                     None => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone()));
+                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
                         }
                         out
                     }
                     Some(Context::Bool(b)) if *b == false => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone()));
+                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
                         }
                         out
                     }
                     Some(Context::Null) => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone()));
+                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
                         }
                         out
                     }
                     Some(Context::List(list)) if list.is_empty() => {
                         let mut out = String::new();
                         for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone()));
+                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
                         }
                         out
                     }
@@ -193,7 +203,13 @@ impl Template {
                     raw
                 }
             }
-            Node::Partial(_) => todo!(),
+            Node::Partial(x) => match partials.get(&x.name) {
+                None => String::new(),
+                Some(partial) => match Template::compile(&Self::indent(partial, &x.indent)) {
+                    Err(_) => String::new(),
+                    Ok(template) => Self::render_node(&template.root, resolver.clone(), partials),
+                },
+            },
             Node::Text(x) => x.clone(),
         }
     }
@@ -211,5 +227,31 @@ impl Template {
             out = out.replace(from, to);
         }
         out
+    }
+
+    fn indent(partial: &str, indent: &str) -> String {
+        Self::lines(partial)
+            .iter()
+            .map(|line| indent.to_owned() + line)
+            .collect::<Vec<String>>()
+            .join("")
+    }
+
+    fn lines(input: &str) -> Vec<&str> {
+        let mut lines = Vec::new();
+        let mut line_start = 0;
+        let mut line_len = 0;
+        for c in input.chars() {
+            line_len += 1;
+            if c == '\n' {
+                lines.push(&input[line_start..line_start + line_len]);
+                line_start = line_start + line_len;
+                line_len = 0;
+            }
+        }
+        if line_len > 0 {
+            lines.push(&input[line_start..line_start + line_len]);
+        }
+        lines
     }
 }

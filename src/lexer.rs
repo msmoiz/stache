@@ -9,7 +9,7 @@ pub enum Token {
     Variable(String, bool),
     SectionStart(String, Variant),
     SectionEnd(String),
-    Partial(String),
+    Partial(String, String),
     SetDelim(String, String),
     Comment,
 }
@@ -48,14 +48,35 @@ impl<'a> Lexer<'a> {
             let is_special_tag = |token: &&Token| {
                 matches!(
                     token,
-                    SectionStart(..) | SectionEnd(_) | Partial(_) | SetDelim(..) | Comment
+                    SectionStart(..) | SectionEnd(_) | Partial(..) | SetDelim(..) | Comment
                 )
             };
             let special_tag_count = line.iter().filter(is_special_tag).count();
-            let contains_text = line.iter().any(|token| matches!(token, Text(_)));
-            if special_tag_count == 1 && !contains_text {
+            let contains_text_or_var = line
+                .iter()
+                .any(|token| matches!(token, Text(_) | Variable(..)));
+            if special_tag_count == 1 && !contains_text_or_var {
                 let standalone_tag = line.iter().find(is_special_tag).unwrap();
-                out.push(standalone_tag.clone());
+                match standalone_tag {
+                    Partial(name, _) => {
+                        let position = line
+                            .iter()
+                            .position(|token| matches!(token, Partial(..)))
+                            .unwrap();
+                        let mut indent = String::new();
+                        for token in &line[..position] {
+                            match token {
+                                Whitespace(x) => indent.push_str(x),
+                                _ => unreachable!(),
+                            }
+                        }
+                        out.push(Partial(name.clone(), indent));
+                        // if let Some(n) = line.iter().find(|token| matches!(token, Newline(_))) {
+                        //     out.push(n.clone());
+                        // }
+                    }
+                    _ => out.push(standalone_tag.clone()),
+                }
             } else {
                 out.extend_from_slice(&line);
             }
@@ -165,7 +186,7 @@ impl<'a> Lexer<'a> {
                 Token::SectionStart(remainder[1..content_len].trim().into(), Variant::Inverse)
             }
             Some('/') => Token::SectionEnd(remainder[1..content_len].trim().into()),
-            Some('>') => Token::Partial(remainder[1..content_len].into()),
+            Some('>') => Token::Partial(remainder[1..content_len].trim().into(), "".into()),
             Some('&') => Token::Variable(remainder[1..content_len].trim().into(), false),
             Some('!') => Token::Comment,
             _ => Token::Variable(remainder[..content_len].trim().into(), true),
@@ -330,7 +351,7 @@ mod tests {
         let text = "{{>foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Partial("foo".into())));
+        assert_eq!(token, Some(Partial("foo".into(), "".into())));
         Ok(())
     }
 
