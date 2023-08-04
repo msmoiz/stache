@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Index;
 
-use crate::ast::Node;
+use crate::ast::{Node, Variant};
 use crate::error::Result;
 use crate::parser::Parser;
 
@@ -69,16 +69,49 @@ impl Template {
                 }
                 out
             }
-            Node::Section(x) => match context.get(&x.name) {
-                None => String::new(),
-                Some(Context::Bool(b)) if *b == true => {
-                    let mut out = String::new();
-                    for child in &x.children {
-                        out.push_str(&Self::render_node(&child, &context));
+            Node::Section(x) => match x.variant {
+                Variant::Direct => match context.get(&x.name) {
+                    None => String::new(),
+                    Some(Context::Bool(b)) if *b == true => {
+                        let mut out = String::new();
+                        for child in &x.children {
+                            out.push_str(&Self::render_node(&child, &context));
+                        }
+                        out
                     }
-                    out
-                }
-                _ => String::new(),
+                    _ => String::new(),
+                },
+                Variant::Inverse => match context.get(&x.name) {
+                    None => {
+                        let mut out = String::new();
+                        for child in &x.children {
+                            out.push_str(&Self::render_node(&child, &context));
+                        }
+                        out
+                    }
+                    Some(Context::Bool(b)) if *b == false => {
+                        let mut out = String::new();
+                        for child in &x.children {
+                            out.push_str(&Self::render_node(&child, &context));
+                        }
+                        out
+                    }
+                    Some(Context::Null) => {
+                        let mut out = String::new();
+                        for child in &x.children {
+                            out.push_str(&Self::render_node(&child, &context));
+                        }
+                        out
+                    }
+                    Some(Context::List(list)) if list.is_empty() => {
+                        let mut out = String::new();
+                        for child in &x.children {
+                            out.push_str(&Self::render_node(&child, &context));
+                        }
+                        out
+                    }
+                    _ => String::new(),
+                },
             },
             Node::Variable(x) => {
                 let raw = context.get(&x.name).map_or(String::new(), |v| v.to_str());
@@ -94,11 +127,12 @@ impl Template {
     }
 
     fn escape(input: &str) -> String {
-        const ESCAPES: [(&str, &str); 4] = [
+        const ESCAPES: [(&str, &str); 5] = [
             ("&", "&amp;"),
             (">", "&gt;"),
             ("<", "&lt;"),
             ("\"", "&quot;"),
+            ("'", "&#39;"),
         ];
         let mut out = String::from(input);
         for (from, to) in ESCAPES {

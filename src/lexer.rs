@@ -159,8 +159,10 @@ impl<'a> Lexer<'a> {
     };
         let token = match remainder.chars().next() {
             Some('#') => Token::SectionStart(remainder[1..content_len].into(), Variant::Direct),
-            Some('^') => Token::SectionStart(remainder[1..content_len].into(), Variant::Inverse),
-            Some('/') => Token::SectionEnd(remainder[1..content_len].into()),
+            Some('^') => {
+                Token::SectionStart(remainder[1..content_len].trim().into(), Variant::Inverse)
+            }
+            Some('/') => Token::SectionEnd(remainder[1..content_len].trim().into()),
             Some('>') => Token::Partial(remainder[1..content_len].into()),
             Some('&') => Token::Variable(remainder[1..content_len].trim().into(), false),
             Some('!') => Token::Comment,

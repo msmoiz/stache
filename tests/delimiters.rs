@@ -46,7 +46,21 @@ mstest!(
     "
 );
 
-// @todo: Inverted Sections
+mstest!(
+    inverted_sections,
+    Context::Map(HashMap::from([
+        (String::from("section"), Context::Bool(false)),
+        (String::from("data"), Context::String("I got interpolated.".into()))
+    ])),
+    "
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [\n{{^section}}\n  {{data}}\n  |data|\n{{/section}}\n\n{{= | | =}}\n|^section|\n  {{data}}\n  |data|\n|/section|\n]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    [\n  I got interpolated.\n  |data|\n\n  {{data}}\n  I got interpolated.\n]\n
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    "
+);
+
 // @todo: Partial Inheritance
 // @todo: Post-Partial Behavior
 
