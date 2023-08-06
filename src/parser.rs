@@ -8,76 +8,63 @@ use crate::{
     lexer::{Lexer, Token},
 };
 
-pub struct Parser<'a> {
-    lexer: Lexer<'a>,
+pub struct Parser<'t> {
+    lexer: Lexer<'t>,
 }
 
-impl<'a> Parser<'a> {
-    fn new(text: &'a str) -> Self {
+impl<'t> Parser<'t> {
+    fn new(text: &'t str) -> Self {
         Self {
             lexer: Lexer::new(text),
         }
     }
 
-    pub fn parse(text: &str) -> Result<Node> {
+    pub fn parse(text: &'t str) -> Result<Node> {
         let mut parser = Parser::new(text);
         parser.root()
     }
 
-    fn root(&mut self) -> Result<Node> {
+    fn root(&mut self) -> Result<Node<'t>> {
         let tokens = self.lexer.tokens()?;
         let mut token_it = tokens.iter();
         let mut root = Node::Root(Root::default());
         while let Some(token) = token_it.next() {
-            match token {
+            let node = match token {
                 Token::Comment => continue,
                 Token::SetDelim(..) => continue,
-                Token::Text(content) => root.push(Node::Text(content.clone())),
-                Token::Whitespace(content) => root.push(Node::Text(content.clone())),
-                Token::Newline(content) => root.push(Node::Text(content.clone())),
-                Token::Variable(name, esc) => {
-                    root.push(Node::Variable(Variable::new(name.clone(), *esc)))
-                }
-                Token::Partial(name, indent) => {
-                    root.push(Node::Partial(Partial::new(name.clone(), indent.clone())))
-                }
+                Token::Text(x) => Node::Text(x),
+                Token::Whitespace(x) => Node::Text(x),
+                Token::Newline(x) => Node::Text(x),
+                Token::Variable(name, esc) => Node::Variable(Variable::new(name, *esc)),
+                Token::Partial(name, indent) => Node::Partial(Partial::new(name, indent.clone())),
                 Token::SectionStart(name, variant) => {
-                    root.push(self.section(&name, &variant, &mut token_it)?)
+                    Self::section(&name, &variant, &mut token_it)?
                 }
                 Token::SectionEnd(..) => return Err(Error::Parse),
-            }
+            };
+            root.push(node);
         }
         Ok(root)
     }
 
-    fn section(
-        &mut self,
-        name: &str,
-        variant: &Variant,
-        token_it: &mut Iter<Token>,
-    ) -> Result<Node> {
+    fn section(name: &str, variant: &Variant, token_it: &mut Iter<Token<'t>>) -> Result<Node<'t>> {
         let mut section = Node::Section(Section::new(name.into(), *variant));
         while let Some(token) = token_it.next() {
-            match token {
+            let node = match token {
                 Token::Comment => continue,
                 Token::SetDelim(..) => continue,
-                Token::Text(content) => section.push(Node::Text(content.clone())),
-                Token::Whitespace(content) => section.push(Node::Text(content.clone())),
-                Token::Newline(content) => section.push(Node::Text(content.clone())),
-                Token::Variable(name, esc) => {
-                    section.push(Node::Variable(Variable::new(name.clone(), *esc)))
-                }
-                Token::Partial(name, indent) => {
-                    section.push(Node::Partial(Partial::new(name.clone(), indent.clone())))
-                }
-                Token::SectionStart(name, variant) => {
-                    section.push(self.section(&name, &variant, token_it)?)
-                }
-                Token::SectionEnd(end_name) => match end_name == name {
+                Token::Text(x) => Node::Text(x),
+                Token::Whitespace(x) => Node::Text(x),
+                Token::Newline(x) => Node::Text(x),
+                Token::Variable(name, esc) => Node::Variable(Variable::new(name, *esc)),
+                Token::Partial(name, indent) => Node::Partial(Partial::new(name, indent.clone())),
+                Token::SectionStart(name, variant) => Self::section(&name, &variant, token_it)?,
+                Token::SectionEnd(end_name) => match end_name == &name {
                     true => break,
                     false => return Err(Error::Parse),
                 },
-            }
+            };
+            section.push(node);
         }
         Ok(section)
     }

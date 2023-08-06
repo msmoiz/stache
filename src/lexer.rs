@@ -2,102 +2,104 @@ use crate::ast::Variant;
 use crate::error::{Error, Result};
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Token {
-    Text(String),
-    Newline(String),
-    Whitespace(String),
-    Variable(String, bool),
-    SectionStart(String, Variant),
-    SectionEnd(String),
-    Partial(String, String),
-    SetDelim(String, String),
+pub enum Token<'t> {
+    Text(&'t str),
+    Newline(&'t str),
+    Whitespace(&'t str),
+    Variable(&'t str, bool),
+    SectionStart(&'t str, Variant),
+    SectionEnd(&'t str),
+    Partial(&'t str, String),
+    SetDelim(&'t str, &'t str),
     Comment,
 }
 
-pub struct Lexer<'a> {
-    text: &'a str,
+pub struct Lexer<'t> {
+    text: &'t str,
     pos: usize,
-    open_delim: String,
-    close_delim: String,
+    open_delim: &'t str,
+    close_delim: &'t str,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(text: &'a str) -> Self {
+impl<'t> Lexer<'t> {
+    pub fn new(text: &'t str) -> Self {
         Self {
             text,
             pos: 0,
-            open_delim: String::from("{{"),
-            close_delim: String::from("}}"),
+            open_delim: "{{",
+            close_delim: "}}",
         }
     }
 
-    pub fn tokens(&mut self) -> Result<Vec<Token>> {
+    pub fn tokens(&mut self) -> Result<Vec<Token<'t>>> {
         let mut tokens = Vec::new();
         while let Some(token) = self.next()? {
             tokens.push(token);
         }
-        let tokens = Self::strip_superfluous_whitespace(&tokens);
+        Self::strip_standalone_whitespace(&mut tokens);
         Ok(tokens)
     }
 
-    fn strip_superfluous_whitespace(mut tokens: &[Token]) -> Vec<Token> {
-        let mut out = Vec::new();
-        while let Some(line) = Self::read_line(&tokens) {
-            tokens = &tokens[line.len()..];
-            use Token::*;
-            let is_special_tag = |token: &&Token| {
-                matches!(
-                    token,
-                    SectionStart(..) | SectionEnd(_) | Partial(..) | SetDelim(..) | Comment
-                )
-            };
-            let special_tag_count = line.iter().filter(is_special_tag).count();
-            let contains_text_or_var = line
-                .iter()
-                .any(|token| matches!(token, Text(_) | Variable(..)));
-            if special_tag_count == 1 && !contains_text_or_var {
-                let standalone_tag = line.iter().find(is_special_tag).unwrap();
-                match standalone_tag {
-                    Partial(name, _) => {
-                        let position = line
-                            .iter()
-                            .position(|token| matches!(token, Partial(..)))
-                            .unwrap();
-                        let mut indent = String::new();
-                        for token in &line[..position] {
-                            match token {
-                                Whitespace(x) => indent.push_str(x),
-                                _ => unreachable!(),
-                            }
-                        }
-                        out.push(Partial(name.clone(), indent));
-                        // if let Some(n) = line.iter().find(|token| matches!(token, Newline(_))) {
-                        //     out.push(n.clone());
-                        // }
-                    }
-                    _ => out.push(standalone_tag.clone()),
-                }
-            } else {
-                out.extend_from_slice(&line);
+    fn strip_standalone_whitespace<'a>(tokens: &mut Vec<Token<'t>>) {
+        let mut ix = 0;
+        while let Some(line) = Self::line(&tokens[ix..]) {
+            let line_len = line.len();
+            let contains_text_or_var = line.iter().any(Self::is_text_or_var);
+            let special_tag_count = line.iter().filter(Self::is_special_tag).count();
+            if contains_text_or_var || special_tag_count != 1 {
+                ix += line_len;
+                continue;
             }
+
+            let tag_pos = line.iter().position(|x| Self::is_special_tag(&x)).unwrap();
+            if matches!(line[tag_pos], Token::Partial(..)) {
+                let mut indent = String::new();
+                for token in &line[..tag_pos] {
+                    let Token::Whitespace(ws) = token else {
+                        unreachable!();
+                    };
+                    indent.push_str(ws);
+                }
+                let Token::Partial(_, partial_indent) = &mut tokens[ix + tag_pos] else {
+                    unreachable!();
+                };
+                *partial_indent = indent;
+            }
+
+            let newline_pos = ix + line_len - tag_pos;
+            tokens.drain(ix..ix + tag_pos);
+            tokens.drain(ix + 1..newline_pos);
+            ix += 1;
         }
-        out
     }
 
-    fn read_line(tokens: &[Token]) -> Option<&[Token]> {
+    fn is_text_or_var(token: &Token) -> bool {
+        use Token::*;
+        matches!(token, Text(_) | Variable(..))
+    }
+
+    fn is_special_tag(token: &&Token) -> bool {
+        use Token::*;
+        matches!(
+            token,
+            SectionStart(..) | SectionEnd(_) | Partial(..) | SetDelim(..) | Comment
+        )
+    }
+
+    fn line<'a>(tokens: &'a [Token<'t>]) -> Option<&'a [Token<'t>]> {
         match tokens
             .iter()
             .position(|token| matches!(token, Token::Newline(_)))
         {
             Some(pos) => Some(&tokens[..pos + 1]),
-            None => match tokens.is_empty() {
-                true => None,
-                false => Some(&tokens),
+            None => match tokens.len() > 0 {
+                true => Some(&tokens),
+                false => None,
             },
         }
     }
 
-    fn next(&mut self) -> Result<Option<Token>> {
+    fn next(&mut self) -> Result<Option<Token<'t>>> {
         if self.pos == self.text.len() {
             return Ok(None);
         }
@@ -107,8 +109,8 @@ impl<'a> Lexer<'a> {
             let Token::SetDelim(open, close) = &token else {
                 return Err(Error::Parse);
             };
-            self.open_delim = open.clone();
-            self.close_delim = close.clone();
+            self.open_delim = open;
+            self.close_delim = close;
             return Ok(Some(token));
         }
 
@@ -137,86 +139,80 @@ impl<'a> Lexer<'a> {
         Ok(Some(token))
     }
 
-    fn remainder(&self) -> &str {
+    fn remainder(&self) -> &'t str {
         &self.text[self.pos..]
     }
 
-    fn scan_set_delim(&self) -> Result<Option<(Token, usize)>> {
+    fn scan_set_delim(&self) -> Result<Option<(Token<'t>, usize)>> {
         let Some(remainder) = self.remainder().strip_prefix(&format!("{}=", &self.open_delim)) else {
-        return Ok(None);
-    };
+            return Ok(None);
+        };
         let Some(content_len) = remainder.find(&format!("={}", &self.close_delim)) else {
-        return Err(Error::Parse);
-    };
+            return Err(Error::Parse);
+        };
         let mut new_delims = remainder[..content_len].trim().split_whitespace();
         let (Some(open_delim), Some(close_delim)) = (new_delims.next(), new_delims.next()) else {
-        return Err(Error::Parse);
-    };
+            return Err(Error::Parse);
+        };
         Ok(Some((
-            Token::SetDelim(open_delim.into(), close_delim.into()),
-            3 + content_len + 3,
-        )))
-    }
-
-    fn scan_triple_unescape(&self) -> Result<Option<(Token, usize)>> {
-        let Some(remainder) = self.remainder().strip_prefix(&format!("{}{{", &self.open_delim)) else {
-        return Ok(None);
-    };
-        let Some(content_len) = remainder.find(&format!("}}{}", &self.close_delim)) else {
-        return Err(Error::Parse);
-    };
-        Ok(Some((
-            Token::Variable(remainder[..content_len].trim().into(), false),
+            Token::SetDelim(open_delim, close_delim),
             content_len + self.open_delim.len() + self.close_delim.len() + 2,
         )))
     }
 
-    fn scan_tag(&self) -> Result<Option<(Token, usize)>> {
+    fn scan_triple_unescape(&self) -> Result<Option<(Token<'t>, usize)>> {
+        let Some(remainder) = self.remainder().strip_prefix(&format!("{}{{", &self.open_delim)) else {
+            return Ok(None);
+        };
+        let Some(content_len) = remainder.find(&format!("}}{}", &self.close_delim)) else {
+            return Err(Error::Parse);
+        };
+        Ok(Some((
+            Token::Variable(remainder[..content_len].trim(), false),
+            content_len + self.open_delim.len() + self.close_delim.len() + 2,
+        )))
+    }
+
+    fn scan_tag(&self) -> Result<Option<(Token<'t>, usize)>> {
         let Some(remainder) = self.remainder().strip_prefix(&self.open_delim) else {
-        return Ok(None);
-    };
+            return Ok(None);
+        };
         let Some(content_len) = remainder.find(&self.close_delim) else {
-        return Err(Error::Parse);
-    };
+            return Err(Error::Parse);
+        };
         let token = match remainder.chars().next() {
-            Some('#') => {
-                Token::SectionStart(remainder[1..content_len].trim().into(), Variant::Direct)
-            }
-            Some('^') => {
-                Token::SectionStart(remainder[1..content_len].trim().into(), Variant::Inverse)
-            }
-            Some('/') => Token::SectionEnd(remainder[1..content_len].trim().into()),
-            Some('>') => Token::Partial(remainder[1..content_len].trim().into(), "".into()),
-            Some('&') => Token::Variable(remainder[1..content_len].trim().into(), false),
+            Some('#') => Token::SectionStart(remainder[1..content_len].trim(), Variant::Direct),
+            Some('^') => Token::SectionStart(remainder[1..content_len].trim(), Variant::Inverse),
+            Some('/') => Token::SectionEnd(remainder[1..content_len].trim()),
+            Some('>') => Token::Partial(remainder[1..content_len].trim(), String::new()),
+            Some('&') => Token::Variable(remainder[1..content_len].trim(), false),
             Some('!') => Token::Comment,
-            _ => Token::Variable(remainder[..content_len].trim().into(), true),
+            _ => Token::Variable(remainder[..content_len].trim(), true),
         };
         let total_delim_len = self.open_delim.len() + self.close_delim.len();
         Ok(Some((token, content_len + total_delim_len)))
     }
 
-    fn scan_newline(&self) -> Option<(Token, usize)> {
+    fn scan_newline(&self) -> Option<(Token<'t>, usize)> {
         match self.remainder().strip_prefix("\r\n") {
-            Some(_) => Some((Token::Newline("\r\n".into()), 2)),
+            Some(_) => Some((Token::Newline("\r\n"), 2)),
             None => match self.remainder().strip_prefix("\n") {
-                Some(_) => Some((Token::Newline("\n".into()), 1)),
+                Some(_) => Some((Token::Newline("\n"), 1)),
                 None => None,
             },
         }
     }
 
-    fn scan_whitespace(&self) -> Option<(Token, usize)> {
+    fn scan_whitespace(&self) -> Option<(Token<'t>, usize)> {
         let chars = self.remainder().chars();
-        let len = chars
-            .map_while(|x| matches!(x, ' ' | '\t').then(|| x.len_utf8()))
-            .sum();
-        if len == 0 {
-            return None;
+        let len = chars.take_while(|x| matches!(x, ' ' | '\t')).count();
+        match len > 0 {
+            true => Some((Token::Whitespace(&self.remainder()[..len]), len)),
+            false => None,
         }
-        Some((Token::Whitespace(self.remainder()[..len].into()), len))
     }
 
-    fn scan_text(&self) -> (Token, usize) {
+    fn scan_text(&self) -> (Token<'t>, usize) {
         let mut len = 0;
         while len < self.remainder().len() {
             let text = &self.remainder()[len..];
@@ -243,7 +239,7 @@ mod tests {
         let text = "foo";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Text("foo".into())));
+        assert_eq!(token, Some(Text("foo")));
         Ok(())
     }
 
@@ -252,7 +248,7 @@ mod tests {
         let text = "\n";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Newline("\n".into())));
+        assert_eq!(token, Some(Newline("\n")));
         Ok(())
     }
 
@@ -261,7 +257,7 @@ mod tests {
         let text = "\r\n";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Newline("\r\n".into())));
+        assert_eq!(token, Some(Newline("\r\n")));
         Ok(())
     }
 
@@ -270,7 +266,7 @@ mod tests {
         let text = " \t";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Whitespace(" \t".into())));
+        assert_eq!(token, Some(Whitespace(" \t")));
         Ok(())
     }
 
@@ -288,7 +284,7 @@ mod tests {
         let text = "{{foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Variable("foo".into(), true)));
+        assert_eq!(token, Some(Variable("foo", true)));
         Ok(())
     }
 
@@ -297,7 +293,7 @@ mod tests {
         let text = "{{&foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Variable("foo".into(), false)));
+        assert_eq!(token, Some(Variable("foo", false)));
         Ok(())
     }
 
@@ -306,7 +302,7 @@ mod tests {
         let text = "{{{foo}}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Variable("foo".into(), false)));
+        assert_eq!(token, Some(Variable("foo", false)));
         Ok(())
     }
 
@@ -315,7 +311,7 @@ mod tests {
         let text = "{{#foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(SectionStart("foo".into(), Variant::Direct)));
+        assert_eq!(token, Some(SectionStart("foo", Variant::Direct)));
         Ok(())
     }
 
@@ -324,7 +320,7 @@ mod tests {
         let text = "{{^foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(SectionStart("foo".into(), Variant::Inverse)));
+        assert_eq!(token, Some(SectionStart("foo", Variant::Inverse)));
         Ok(())
     }
 
@@ -333,7 +329,7 @@ mod tests {
         let text = "{{/foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(SectionEnd("foo".into())));
+        assert_eq!(token, Some(SectionEnd("foo")));
         Ok(())
     }
 
@@ -351,7 +347,7 @@ mod tests {
         let text = "{{>foo}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(Partial("foo".into(), "".into())));
+        assert_eq!(token, Some(Partial("foo", String::new())));
         Ok(())
     }
 
@@ -360,7 +356,7 @@ mod tests {
         let text = "{{=// //=}}";
         let mut lexer = Lexer::new(text);
         let token = lexer.next()?;
-        assert_eq!(token, Some(SetDelim("//".into(), "//".into())));
+        assert_eq!(token, Some(SetDelim("//", "//")));
         Ok(())
     }
 }

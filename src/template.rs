@@ -90,12 +90,12 @@ impl<'a> ContextResolver<'a> {
     }
 }
 
-pub struct Template {
-    root: Node,
+pub struct Template<'t> {
+    root: Node<'t>,
 }
 
-impl Template {
-    pub fn compile(text: &str) -> Result<Self> {
+impl<'t> Template<'t> {
+    pub fn compile(text: &'t str) -> Result<Self> {
         let root = Parser::parse(text)?;
         Ok(Self { root })
     }
@@ -203,14 +203,14 @@ impl Template {
                     raw
                 }
             }
-            Node::Partial(x) => match partials.get(&x.name) {
+            Node::Partial(x) => match partials.get(x.name) {
                 None => String::new(),
                 Some(partial) => match Template::compile(&Self::indent(partial, &x.indent)) {
                     Err(_) => String::new(),
                     Ok(template) => Self::render_node(&template.root, resolver.clone(), partials),
                 },
             },
-            Node::Text(x) => x.clone(),
+            Node::Text(x) => x.to_string(),
         }
     }
 

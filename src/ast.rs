@@ -1,16 +1,16 @@
 use std::ops::Index;
 
 #[derive(Debug, PartialEq)]
-pub enum Node {
-    Root(Root),
-    Section(Section),
-    Variable(Variable),
-    Partial(Partial),
-    Text(String),
+pub enum Node<'t> {
+    Root(Root<'t>),
+    Section(Section<'t>),
+    Variable(Variable<'t>),
+    Partial(Partial<'t>),
+    Text(&'t str),
 }
 
-impl Node {
-    pub fn children(&self) -> &Vec<Node> {
+impl<'t> Node<'t> {
+    pub fn children(&self) -> &Vec<Node<'t>> {
         match self {
             Node::Root(x) => &x.children,
             Node::Section(x) => &x.children,
@@ -18,7 +18,7 @@ impl Node {
         }
     }
 
-    pub fn push(&mut self, child: Node) {
+    pub fn push(&mut self, child: Node<'t>) {
         match self {
             Node::Root(x) => x.children.push(child),
             Node::Section(x) => x.children.push(child),
@@ -27,8 +27,8 @@ impl Node {
     }
 }
 
-impl Index<usize> for Node {
-    type Output = Node;
+impl<'t> Index<usize> for Node<'t> {
+    type Output = Node<'t>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.children()[index]
@@ -36,8 +36,8 @@ impl Index<usize> for Node {
 }
 
 #[derive(Debug, PartialEq, Default)]
-pub struct Root {
-    pub children: Vec<Node>,
+pub struct Root<'t> {
+    pub children: Vec<Node<'t>>,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -47,13 +47,13 @@ pub enum Variant {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Section {
+pub struct Section<'t> {
     pub name: String,
     pub variant: Variant,
-    pub children: Vec<Node>,
+    pub children: Vec<Node<'t>>,
 }
 
-impl Section {
+impl<'t> Section<'t> {
     pub fn new(name: String, variant: Variant) -> Self {
         Self {
             name,
@@ -64,25 +64,25 @@ impl Section {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Variable {
-    pub name: String,
+pub struct Variable<'t> {
+    pub name: &'t str,
     pub escaped: bool,
 }
 
-impl Variable {
-    pub fn new(name: String, escaped: bool) -> Self {
+impl<'t> Variable<'t> {
+    pub fn new(name: &'t str, escaped: bool) -> Self {
         Self { name, escaped }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Partial {
-    pub name: String,
+pub struct Partial<'t> {
+    pub name: &'t str,
     pub indent: String,
 }
 
-impl Partial {
-    pub fn new(name: String, indent: String) -> Self {
+impl<'t> Partial<'t> {
+    pub fn new(name: &'t str, indent: String) -> Self {
         Self { name, indent }
     }
 }
