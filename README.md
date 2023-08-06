@@ -1,12 +1,13 @@
 # Stache
 
 This is a quick and dirty implementation of the Mustache template engine in Rust
-thrown together in an afternoon. The process of compilation is mostly fleshed
-out, but the rendering is lacking central features at the moment including
-support for iteration, functions, and nested context. There are a number of
-other odds and ends (like whitespace management within tags) that went beyond
-the scope of this exercise. For a more full-featured library, check out
-[Ramhorns](https://github.com/maciejhirsz/ramhorns).
+thrown together in a few afternoons. It supports all core features outlined in
+the [Mustache spec](https://github.com/mustache/spec), including interpolation,
+escaping, comments, sections, nested context, and partials. It also includes
+some convenience methods for constructing context objects and compiles using a
+(mostly) zero-copy approach. For more full-featured (read: supported) libraries,
+check out [Ramhorns](https://github.com/maciejhirsz/ramhorns) or
+[rust-mustache](https://github.com/nickel-org/rust-mustache).
 
 ```rust
 use stache::MapBuilder;
