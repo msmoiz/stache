@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::ops::Index;
 
-use crate::ast::{Node, Variant};
+use crate::ast::{Node, Partial, Root, Section, Variable, Variant};
 use crate::error::Result;
 use crate::parser::Parser;
 
@@ -16,7 +15,7 @@ pub enum Context {
 }
 
 impl Context {
-    fn to_str(&self) -> String {
+    fn to_string(&self) -> String {
         match self {
             Context::String(x) => x.to_string(),
             Context::Integer(x) => x.to_string(),
@@ -27,28 +26,20 @@ impl Context {
         }
     }
 
-    fn get(&self, index: &str) -> Option<&Context> {
-        if index == "." {
-            return Some(self);
-        }
-        let mut context = Some(self);
-        for index in index.split(".") {
-            context = match context {
-                Some(Context::Map(x)) => x.get(index),
-                _ => None,
-            };
-        }
-        context
-    }
-}
-
-impl Index<&str> for Context {
-    type Output = Context;
-
-    fn index(&self, index: &str) -> &Self::Output {
+    fn is_truthy(&self) -> bool {
         match self {
-            Context::Map(x) => &x[index],
-            _ => panic!("not a map"),
+            Context::String(_) | Context::Integer(_) | Context::Float(_) => true,
+            Context::Bool(x) => *x,
+            Context::Null => false,
+            Context::Map(_) => true,
+            Context::List(x) => x.len() > 0,
+        }
+    }
+
+    fn get(&self, index: &str) -> Option<&Context> {
+        match self {
+            Context::Map(x) => x.get(index),
+            _ => None,
         }
     }
 }
@@ -71,22 +62,30 @@ impl<'a> ContextResolver<'a> {
         clone
     }
 
-    fn get(&self, name: &str) -> Option<&Context> {
+    fn find(&self, name: &str) -> Option<&Context> {
+        if name == "." {
+            return self.stack.last().copied();
+        }
+
         let segments: Vec<&str> = name.split(".").collect();
-        let first_name = if name == "." { "." } else { segments[0] };
-        let mut first_context = None;
+
+        let mut out = None;
         for context in self.stack.iter().rev() {
-            if let Some(val) = context.get(first_name) {
-                first_context = Some(val);
+            if let Some(context) = context.get(segments[0]) {
+                out = Some(context);
                 break;
             }
         }
-        if segments.len() - 1 > 0 && name != "." {
-            if let Some(first_context) = first_context {
-                return first_context.get(&segments[1..].join("."));
+
+        for segment in &segments[1..] {
+            match out {
+                None => break,
+                Some(context @ Context::Map(_)) => out = context.get(&segment),
+                _ => out = None,
             }
         }
-        first_context
+
+        out
     }
 }
 
@@ -110,108 +109,80 @@ impl<'t> Template<'t> {
 
     fn render_node(node: &Node, resolver: ContextResolver, partials: &Partials) -> String {
         match node {
-            Node::Root(x) => {
+            Node::Root(root) => Self::render_root(root, resolver, partials),
+            Node::Section(section) => Self::render_section(section, resolver, partials),
+            Node::Variable(variable) => Self::render_variable(variable, resolver),
+            Node::Partial(partial) => Self::render_partial(partial, resolver, partials),
+            Node::Text(text) => Self::render_text(text),
+        }
+    }
+
+    fn render_root(root: &Root, resolver: ContextResolver, partials: &Partials) -> String {
+        root.children
+            .iter()
+            .map(|child| Self::render_node(&child, resolver.clone(), partials))
+            .collect::<Vec<String>>()
+            .join("")
+    }
+
+    fn render_section(section: &Section, resolver: ContextResolver, partials: &Partials) -> String {
+        let context = resolver.find(section.name);
+        match (section.variant, context) {
+            (Variant::Direct, Some(Context::List(list))) if !list.is_empty() => {
                 let mut out = String::new();
-                for child in &x.children {
-                    out.push_str(&Self::render_node(&child, resolver.clone(), partials));
+                for context in list {
+                    for child in &section.children {
+                        out.push_str(&Self::render_node(&child, resolver.push(context), partials));
+                    }
                 }
                 out
             }
-            Node::Section(x) => match x.variant {
-                Variant::Direct => match resolver.get(&x.name) {
-                    None => String::new(),
-                    Some(c @ Context::Integer(_)) => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
-                        }
-                        out
-                    }
-                    Some(c @ Context::String(_)) => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
-                        }
-                        out
-                    }
-                    Some(c @ Context::Bool(b)) if *b == true => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
-                        }
-                        out
-                    }
-                    Some(c @ Context::Map(_)) => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.push(c), partials));
-                        }
-                        out
-                    }
-                    Some(Context::List(list)) if !list.is_empty() => {
-                        let mut out = String::new();
-                        for c in list {
-                            for child in &x.children {
-                                out.push_str(&Self::render_node(
-                                    &child,
-                                    resolver.push(c),
-                                    partials,
-                                ));
-                            }
-                        }
-                        out
-                    }
-                    _ => String::new(),
-                },
-                Variant::Inverse => match resolver.get(&x.name) {
-                    None => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
-                        }
-                        out
-                    }
-                    Some(Context::Bool(b)) if *b == false => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
-                        }
-                        out
-                    }
-                    Some(Context::Null) => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
-                        }
-                        out
-                    }
-                    Some(Context::List(list)) if list.is_empty() => {
-                        let mut out = String::new();
-                        for child in &x.children {
-                            out.push_str(&Self::render_node(&child, resolver.clone(), partials));
-                        }
-                        out
-                    }
-                    _ => String::new(),
-                },
-            },
-            Node::Variable(x) => {
-                let raw = resolver.get(&x.name).map_or(String::new(), |v| v.to_str());
-                if x.escaped {
-                    Self::escape(&raw)
-                } else {
-                    raw
-                }
-            }
-            Node::Partial(x) => match partials.get(x.name) {
-                None => String::new(),
-                Some(partial) => match Template::compile(&Self::indent(partial, &x.indent)) {
-                    Err(_) => String::new(),
-                    Ok(template) => Self::render_node(&template.root, resolver.clone(), partials),
-                },
-            },
-            Node::Text(x) => x.to_string(),
+            (Variant::Direct, Some(context)) if context.is_truthy() => section
+                .children
+                .iter()
+                .map(|child| Self::render_node(&child, resolver.push(context), partials))
+                .collect::<Vec<String>>()
+                .join(""),
+            (Variant::Inverse, Some(context)) if !context.is_truthy() => section
+                .children
+                .iter()
+                .map(|child| Self::render_node(&child, resolver.clone(), partials))
+                .collect::<Vec<String>>()
+                .join(""),
+            (Variant::Inverse, None) => section
+                .children
+                .iter()
+                .map(|child| Self::render_node(&child, resolver.clone(), partials))
+                .collect::<Vec<String>>()
+                .join(""),
+            _ => String::new(),
         }
+    }
+
+    fn render_variable(variable: &Variable, resolver: ContextResolver) -> String {
+        let raw = resolver
+            .find(variable.name)
+            .map_or(String::new(), |context| context.to_string());
+        if variable.escaped {
+            Self::escape(&raw)
+        } else {
+            raw
+        }
+    }
+
+    fn render_partial(partial: &Partial, resolver: ContextResolver, partials: &Partials) -> String {
+        let Partial { name, indent } = partial;
+        match partials.get(*name) {
+            None => String::new(),
+            Some(partial) => match Template::compile(&Self::indent(partial, &indent)) {
+                Err(_) => String::new(),
+                Ok(template) => Self::render_node(&template.root, resolver, partials),
+            },
+        }
+    }
+
+    fn render_text(text: &str) -> String {
+        text.into()
     }
 
     fn escape(input: &str) -> String {

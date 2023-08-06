@@ -47,7 +47,11 @@ impl<'t> Parser<'t> {
         Ok(root)
     }
 
-    fn section(name: &str, variant: &Variant, token_it: &mut Iter<Token<'t>>) -> Result<Node<'t>> {
+    fn section(
+        name: &'t str,
+        variant: &Variant,
+        token_it: &mut Iter<Token<'t>>,
+    ) -> Result<Node<'t>> {
         let mut section = Node::Section(Section::new(name.into(), *variant));
         while let Some(token) = token_it.next() {
             let node = match token {

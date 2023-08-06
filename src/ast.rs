@@ -48,13 +48,13 @@ pub enum Variant {
 
 #[derive(Debug, PartialEq)]
 pub struct Section<'t> {
-    pub name: String,
+    pub name: &'t str,
     pub variant: Variant,
     pub children: Vec<Node<'t>>,
 }
 
 impl<'t> Section<'t> {
-    pub fn new(name: String, variant: Variant) -> Self {
+    pub fn new(name: &'t str, variant: Variant) -> Self {
         Self {
             name,
             variant,
