@@ -1,48 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ast::{Node, Partial, Root, Section, Variable, Variant};
+use crate::context::Context;
 use crate::error::Result;
 use crate::parser::Parser;
-
-pub enum Context {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Bool(bool),
-    Null,
-    Map(HashMap<String, Context>),
-    List(Vec<Context>),
-}
-
-impl Context {
-    fn to_string(&self) -> String {
-        match self {
-            Context::String(x) => x.to_string(),
-            Context::Integer(x) => x.to_string(),
-            Context::Float(x) => x.to_string(),
-            Context::Bool(x) => x.to_string(),
-            Context::Null => "".to_string(),
-            _ => panic!("not a scalar"),
-        }
-    }
-
-    fn is_truthy(&self) -> bool {
-        match self {
-            Context::String(_) | Context::Integer(_) | Context::Float(_) => true,
-            Context::Bool(x) => *x,
-            Context::Null => false,
-            Context::Map(_) => true,
-            Context::List(x) => x.len() > 0,
-        }
-    }
-
-    fn get(&self, index: &str) -> Option<&Context> {
-        match self {
-            Context::Map(x) => x.get(index),
-            _ => None,
-        }
-    }
-}
 
 pub type Partials = HashMap<String, String>;
 
